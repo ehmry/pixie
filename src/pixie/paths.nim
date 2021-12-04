@@ -671,7 +671,7 @@ proc commandsToShapes(
       pow(t, 3) * to
 
     var
-      t: float32 # Where we are at on the curve from [0, 1]
+      t: float32       # Where we are at on the curve from [0, 1]
       step = 1.float32 # How far we want to try to move along the curve
       prev = at
       next = compute(at, ctrl1, ctrl2, to, t + step)
@@ -702,7 +702,7 @@ proc commandsToShapes(
       pow(t, 2) * to
 
     var
-      t: float32 # Where we are at on the curve from [0, 1]
+      t: float32       # Where we are at on the curve from [0, 1]
       step = 1.float32 # How far we want to try to move along the curve
       prev = at
       next = compute(at, ctrl, to, t + step)
@@ -821,7 +821,7 @@ proc commandsToShapes(
     let arc = endpointToCenterArcParams(at, radii, rotation, large, sweep, to)
 
     var
-      t: float32 # Where we are at on the curve from [0, 1]
+      t: float32       # Where we are at on the curve from [0, 1]
       step = 1.float32 # How far we want to try to move along the curve
       prev = at
     while t != 1:
@@ -2295,7 +2295,8 @@ when defined(pixieSweeps):
       let
         sweepHeight = cutLines[currCutLine + 1] - cutLines[currCutLine]
         yFracTop = ((y.float32 - cutLines[currCutLine]) / sweepHeight).clamp(0, 1)
-        yFracBottom = ((y.float32 + 1 - cutLines[currCutLine]) / sweepHeight).clamp(0, 1)
+        yFracBottom = ((y.float32 + 1 - cutLines[currCutLine]) /
+            sweepHeight).clamp(0, 1)
       var i = 0
       while i < sweep.len:
         let
@@ -2317,11 +2318,13 @@ when defined(pixieSweeps):
           nw = vec2(sweep[i+0].atx, cutLines[currCutLine])
           sw = vec2(sweep[i+0].tox, cutLines[currCutLine + 1])
         for x in minWi ..< maxWi:
-          var area = pixelCover(nw - vec2(x.float32, y.float32), sw - vec2(x.float32, y.float32))
+          var area = pixelCover(nw - vec2(x.float32, y.float32), sw - vec2(
+              x.float32, y.float32))
           coverages[x - startX] += (area * 255).uint8
 
         let x = maxWi
-        var midArea = pixelCover(nw - vec2(x.float32, y.float32), sw - vec2(x.float32, y.float32))
+        var midArea = pixelCover(nw - vec2(x.float32, y.float32), sw - vec2(
+            x.float32, y.float32))
         var midArea8 = (midArea * 255).uint8
         for x in maxWi ..< minEi:
           # TODO: Maybe try coverages of uint16 to prevent streeks in solid white fill?
@@ -2331,7 +2334,8 @@ when defined(pixieSweeps):
           ne = vec2(sweep[i+1].atx, cutLines[currCutLine])
           se = vec2(sweep[i+1].tox, cutLines[currCutLine + 1])
         for x in minEi ..< maxEi:
-          var area = midArea - pixelCover(ne - vec2(x.float32, y.float32), se - vec2(x.float32, y.float32))
+          var area = midArea - pixelCover(ne - vec2(x.float32, y.float32), se -
+              vec2(x.float32, y.float32))
           coverages[x - startX] += (area * 255).uint8
 
         i += 2
@@ -2347,7 +2351,8 @@ when defined(pixieSweeps):
         inc currCutLine
         if currCutLine == sweeps.len:
           break
-        coverages.computeCoverage(scanLine, startX, cutLines, currCutLine, sweeps[currCutLine])
+        coverages.computeCoverage(scanLine, startX, cutLines, currCutLine,
+            sweeps[currCutLine])
 
       image.fillCoverage(
         rgbx,
@@ -2416,7 +2421,6 @@ else:
     if blendMode == bmMask:
       image.clearUnsafe(0, 0, 0, startY)
       image.clearUnsafe(0, pathHeight, 0, image.height)
-
 
 when defined(release):
   {.pop.}
