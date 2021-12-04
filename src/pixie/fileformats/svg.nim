@@ -376,7 +376,7 @@ proc drawInternal(img: Image, node: XmlNode, ctxStack: var seq[Ctx]) =
     return
 
   case node.tag:
-  of "title", "desc":
+  of "title", "desc", "metadata":
     discard
 
   of "defs":
