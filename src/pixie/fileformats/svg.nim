@@ -626,4 +626,4 @@ proc decodeSvg*(
   except PixieError as e:
     raise e
   except:
-    raise newException(PixieError, "Unable to load SVG")
+    raise currentExceptionAsPixieError()
