@@ -1,6 +1,6 @@
 ## Load SVG files.
 
-import chroma, pixie/common, pixie/images, pixie/internal, pixie/paints,
+import chroma, pixie/common, pixie/fonts, pixie/images, pixie/internal, pixie/paints,
     pixie/paths, parseutils, strutils, tables, vmath, xmlparser, xmltree
 
 when defined(pixieDebugSvg):
@@ -370,7 +370,27 @@ proc stroke(img: Image, ctx: Ctx, path: Path) {.inline.} =
       dashes = ctx.strokeDashArray
     )
 
-proc drawInternal(img: Image, node: XmlNode, ctxStack: var seq[Ctx]) =
+proc parseSomeFloat(s: string): float =
+  case s
+  of "", "none": discard
+  else: discard parseFloat(s, result)
+
+proc parseSomeLength(s: string): int =
+  # TODO: length ::= number ("em" | "ex" | "px" | "in" | "cm" | "mm" | "pt" | "pc" | "%")?
+  case s
+  of "", "none": discard
+  else: discard parseInt(s, result)
+
+proc parseLengthList(s: string): seq[int] =
+  var
+    off: int
+    x: int
+  while off < s.len:
+    if off > 0: off.inc skipWhile(s, {' ', ','}, off)
+    off.inc parseInt(s, x, off)
+    result.add x
+
+proc drawInternal(img: Image, node: XmlNode, ctxStack: var seq[Ctx]) {.gcsafe.} =
   if node.kind != xnElement:
     # Skip <!-- comments -->
     return
@@ -573,6 +593,33 @@ proc drawInternal(img: Image, node: XmlNode, ctxStack: var seq[Ctx]) =
         raise newException(PixieError, "Unexpected SVG tag: " & child.tag)
 
     ctx.linearGradients[id] = linearGradient
+
+  of "text":
+    proc parseLengthAdjust(): bool =
+      case node.attr("lengthAdjust")
+      of "", "spacing": result = false
+      of "spacingAndGlyphs": result = true
+      else: failInvalid()
+
+    let
+      ctx = decodeCtx(ctxStack[^1], node)
+      body = node.innerText
+      x = parseLengthList node.attrOrDefault("x", "0")
+      y = parseLengthList node.attrOrDefault("y", "0")
+      dx = parseLengthList node.attr("dx")
+      dy = parseLengthList node.attr("dy")
+      rotate = parseSomeFloat node.attr("rotate")
+      textLength = parseSomeLength node.attr("textLength")
+      lengthAdjustSpacingAndGlyphs = parseLengthAdjust()
+    if textLength < 0:
+      failInvalid()
+    echo "should be rendering text ", body
+    const fontData = readFile(
+      "/home/repo/nimpkgs/pixie/examples/data/Roboto-Regular_1.ttf")
+    var font = newFont(parseTtf(fontData))
+    font.size = 20
+    let arrangement = font.typeset(body)
+    fillText(img, arrangement)
 
   of "svg":
     var ctx = decodeCtx(ctxStack[^1], node)
