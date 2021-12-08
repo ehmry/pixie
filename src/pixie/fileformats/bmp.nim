@@ -4,7 +4,9 @@ import chroma, flatty/binny, pixie/common, pixie/images
 
 const bmpSignature* = "BM"
 
-proc decodeBmp*(data: string): Image {.raises: [PixieError].} =
+proc decodeBmp*(
+  data: string; width = 0; height = 0
+): Image {.raises: [PixieError].} =
   ## Decodes bitmap data into an Image.
 
   # BMP Header
@@ -12,8 +14,8 @@ proc decodeBmp*(data: string): Image {.raises: [PixieError].} =
     raise newException(PixieError, "Invalid BMP data")
 
   let
-    width = data.readInt32(18).int
-    height = data.readInt32(22).int
+    bmpWidth = data.readInt32(18).int
+    bmpHeight = data.readInt32(22).int
     bits = data.readUint16(28).int
     compression = data.readUint32(30).int
   var
@@ -26,10 +28,10 @@ proc decodeBmp*(data: string): Image {.raises: [PixieError].} =
     raise newException(PixieError, "Unsupported BMP data format")
 
   let channels = if bits == 32: 4 else: 3
-  if width * height * channels + offset > data.len:
+  if bmpWidth * bmpHeight * channels + offset > data.len:
     raise newException(PixieError, "Invalid BMP data size")
 
-  result = newImage(width, height)
+  result = newImage(bmpWidth, bmpHeight)
 
   for y in 0 ..< result.height:
     for x in 0 ..< result.width:
@@ -48,9 +50,14 @@ proc decodeBmp*(data: string): Image {.raises: [PixieError].} =
         offset += 3
       result[x, result.height - y - 1] = rgba.rgbx()
 
-proc decodeBmp*(data: seq[uint8]): Image {.inline, raises: [PixieError].} =
+  if width notin {0, bmpWidth} or height notin {0, bmpHeight}:
+    result = resize(result, width, height)
+
+proc decodeBmp*(
+  data: seq[uint8]; width = 0; height = 0
+): Image {.inline, raises: [PixieError].} =
   ## Decodes bitmap data into an Image.
-  decodeBmp(cast[string](data))
+  decodeBmp(cast[string](data), width, height)
 
 proc encodeBmp*(image: Image): string {.raises: [].} =
   ## Encodes an image into the BMP file format.

@@ -325,6 +325,13 @@ proc newImage*(png: Png): Image {.raises: [PixieError].} =
   copyMem(result.data[0].addr, png.data[0].addr, png.data.len * 4)
   result.data.toPremultipliedAlpha()
 
+proc newImage*(
+  png: Png; width, height: int
+): Image {.raises: [PixieError].} =
+  result = newImage(png)
+  if width notin {0, png.width} or height notin {0, png.height}:
+    result = resize(result, width, height)
+
 proc decodePngRaw*(data: string): Png {.raises: [PixieError].} =
   ## Decodes the PNG data.
   if data.len < (8 + (8 + 13 + 4) + 4): # Magic bytes + IHDR + IEND
@@ -434,9 +441,11 @@ proc decodePngRaw*(data: string): Png {.raises: [PixieError].} =
   result.channels = 4
   result.data = decodeImageData(header, palette, transparency, imageData)
 
-proc decodePng*(data: string): Image {.raises: [PixieError].} =
+proc decodePng*(
+  data: string; width = 0; height = 0
+): Image {.raises: [PixieError].} =
   ## Decodes the PNG data into an Image.
-  newImage(decodePngRaw(data))
+  newImage(decodePngRaw(data), width, height)
 
 proc encodePng*(
   width, height, channels: int, data: pointer, len: int

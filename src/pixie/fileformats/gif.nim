@@ -10,7 +10,9 @@ template failInvalid() =
 when defined(release):
   {.push checks: off.}
 
-proc decodeGif*(data: string): Image {.raises: [PixieError].} =
+proc decodeGif*(
+  data: string; width = 0; height = 0
+): Image {.raises: [PixieError].} =
   ## Decodes GIF data into an Image.
 
   if data.len <= 13: failInvalid()
@@ -20,8 +22,8 @@ proc decodeGif*(data: string): Image {.raises: [PixieError].} =
 
   let
     # Read information about the image.
-    width = data.readInt16(6).int
-    height = data.readInt16(8).int
+    gifWidth = data.readInt16(6).int
+    gifHeight = data.readInt16(8).int
     flags = data.readUint8(10).int
     hasColorTable = (flags and 0x80) != 0
     originalDepth = ((flags and 0x70) shr 4) + 1
@@ -30,7 +32,7 @@ proc decodeGif*(data: string): Image {.raises: [PixieError].} =
     bgColorIndex = data.readUint8(11)
     pixelAspectRatio = data.readUint8(11)
 
-  result = newImage(width, height)
+  result = newImage(gifWidth, gifHeight)
 
   # Read the main color table.
   var
@@ -174,6 +176,9 @@ proc decodeGif*(data: string): Image {.raises: [PixieError].} =
       return
     else:
       raise newException(PixieError, "Invalid GIF block type")
+
+  if width notin {0, gifWidth} or height notin {0, gifHeight}:
+    result = resize(result, width, height)
 
 when defined(release):
   {.pop.}

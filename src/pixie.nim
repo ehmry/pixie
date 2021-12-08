@@ -18,19 +18,21 @@ converter autoPremultipliedAlpha*(c: ColorRGBA): ColorRGBX {.inline, raises: [].
   ## Convert a straight alpha RGBA to a premultiplied alpha RGBA.
   c.rgbx()
 
-proc decodeImage*(data: string | seq[uint8]): Image {.raises: [PixieError].} =
+proc decodeImage*(
+  data: string | seq[uint8]; width = 0; height = 0
+): Image {.raises: [PixieError].} =
   ## Loads an image from memory.
   if data.len > 8 and data.readUint64(0) == cast[uint64](pngSignature):
-    decodePng(data)
+    decodePng(data, width, height)
   elif data.len > 2 and data.readUint16(0) == cast[uint16](jpgStartOfImage):
-    decodeJpg(data)
+    decodeJpg(data, width, height)
   elif data.len > 2 and data.readStr(0, 2) == bmpSignature:
-    decodeBmp(data)
+    decodeBmp(data, width, height)
   elif data.len > 5 and
     (data.readStr(0, 5) == xmlSignature or data.readStr(0, 4) == svgSignature):
-    decodeSvg(data)
+    decodeSvg(data, width, height)
   elif data.len > 6 and data.readStr(0, 6) in gifSignatures:
-    decodeGif(data)
+    decodeGif(data, width, height)
   else:
     raise newException(PixieError, "Unsupported image file format")
 
@@ -41,10 +43,12 @@ proc decodeMask*(data: string | seq[uint8]): Mask {.raises: [PixieError].} =
   else:
     raise newException(PixieError, "Unsupported mask file format")
 
-proc readImage*(filePath: string): Image {.inline, raises: [PixieError].} =
+proc readImage*(
+  filePath: string; width = 0; height = 0
+): Image {.inline, raises: [PixieError].} =
   ## Loads an image from a file.
   try:
-    decodeImage(readFile(filePath))
+    decodeImage(readFile(filePath), width, height)
   except IOError as e:
     raise newException(PixieError, e.msg, e)
 
