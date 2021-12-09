@@ -1,7 +1,7 @@
 ## Load SVG files.
 
 import chroma, pixie/common, pixie/fonts, pixie/images, pixie/internal, pixie/paints,
-    pixie/paths, parseutils, strutils, tables, vmath, xmlparser, xmltree
+    pixie/paths, pixie/systemtypefaces, parseutils, strutils, tables, vmath, xmlparser, xmltree
 
 when defined(pixieDebugSvg):
   import strtabs
@@ -17,8 +17,9 @@ type
 
   ViewBox = tuple[minX, minY, width, height: int]
 
+  Direction = enum ltr, rtl
+
   Ctx = object
-    display: bool
     fillRule: WindingRule
     fill: Paint
     stroke: ColorRGBX
@@ -28,10 +29,15 @@ type
     strokeMiterLimit: float32
     strokeDashArray: seq[float32]
     transform: Mat3
-    shouldStroke: bool
     opacity, strokeOpacity: float32
     linearGradients: TableRef[string, LinearGradient]
     viewBox: ViewBox
+    textDirection: Direction
+    fontFamily, fontStyle: string
+    fontWeight: int
+    fontSize: float32
+    display: bool
+    shouldStroke: bool
 
 template failInvalid() =
   raise newException(PixieError, "Invalid SVG data")
@@ -50,6 +56,10 @@ proc parseIntTuple(s: string; T: typedesc[tuple]): T {.inline.} =
       if off != 0: off.inc skipWhitespace(s, off)
       off.inc parseInt(s, x, off)
 
+proc fromAttr(result: var string; node: XmlNode; name: string) =
+  var s = node.attr(name)
+  if s != "": result = s
+
 proc initCtx(width, height: int): Ctx =
   result.display = true
   try:
@@ -64,6 +74,8 @@ proc initCtx(width, height: int): Ctx =
   result.strokeOpacity = 1
   result.linearGradients = newTable[string, LinearGradient]()
   (result.viewBox.width, result.viewBox.height) = (width, height)
+  result.fontStyle = "normal"
+  result.fontWeight = 400
 
 proc applyViewBox(result: var Ctx, node: XmlNode) =
   let s = node.attr("viewBox")
@@ -102,6 +114,12 @@ proc decodeCtxInternal(inherited: Ctx, node: XmlNode): Ctx =
     opacity = node.attr("opacity")
     fillOpacity = node.attr("fill-opacity")
     strokeOpacity = node.attr("stroke-opacity")
+    textDirection = node.attr("direction")
+    fontWeight = node.attr("font-weight")
+    fontSize = node.attr("font-size")
+
+  result.fontFamily.fromAttr(node, "font-family")
+  result.fontStyle.fromAttr(node, "font-style")
 
   when defined(pixieDebugSvg):
     proc maybeLogPair(k, v: string) =
@@ -338,8 +356,33 @@ proc decodeCtxInternal(inherited: Ctx, node: XmlNode): Ctx =
             else:
               sx
         result.transform = result.transform * scale(vec2(sx, sy))
+      #[
+      elif f.startsWith("skewX("):
+        # | 1 tan(a) 0 |
+        # | 0   1    0 |
+        # | 0   0    1 |
+      elif f.startsWith("skewY"):
+        # |   1    0 0 |
+        # | tan(a) 1 0 |
+        # |   0    0 1 |
+      ]#
       else:
         failInvalidTransform(transform)
+
+  case textDirection
+  of "": discard
+  of "ltr": result.textDirection = ltr
+  of "rtl": result.textDirection = rtl
+  else: failInvalid()
+
+  case fontWeight
+  of "": discard
+  of "normal": result.fontWeight = 400
+  of "bold": result.fontWeight = 700
+  else: result.fontWeight = parseInt(fontSize)
+
+  if fontSize != "":
+    result.fontSize = parseFloat(fontSize)
 
 proc decodeCtx(inherited: Ctx, node: XmlNode): Ctx =
   try:
@@ -375,19 +418,25 @@ proc parseSomeFloat(s: string): float =
   of "", "none": discard
   else: discard parseFloat(s, result)
 
+proc parseSomeInt(s: string): int =
+  case s
+  of "", "none": discard
+  else: discard parseInt(s, result)
+
 proc parseSomeLength(s: string): int =
   # TODO: length ::= number ("em" | "ex" | "px" | "in" | "cm" | "mm" | "pt" | "pc" | "%")?
   case s
   of "", "none": discard
   else: discard parseInt(s, result)
 
-proc parseLengthList(s: string): seq[int] =
+proc parseLengthList(s: string): seq[float] =
+  ## Parse a space or comma seperated list of lengths.
   var
     off: int
-    x: int
+    x: float
   while off < s.len:
     if off > 0: off.inc skipWhile(s, {' ', ','}, off)
-    off.inc parseInt(s, x, off)
+    off.inc parseFloat(s, x, off)
     result.add x
 
 proc drawInternal(img: Image, node: XmlNode, ctxStack: var seq[Ctx]) {.gcsafe.} =
@@ -603,23 +652,40 @@ proc drawInternal(img: Image, node: XmlNode, ctxStack: var seq[Ctx]) {.gcsafe.} 
 
     let
       ctx = decodeCtx(ctxStack[^1], node)
-      body = node.innerText
       x = parseLengthList node.attrOrDefault("x", "0")
       y = parseLengthList node.attrOrDefault("y", "0")
       dx = parseLengthList node.attr("dx")
       dy = parseLengthList node.attr("dy")
-      rotate = parseSomeFloat node.attr("rotate")
+      rotate = parseLengthList node.attr("rotate")
       textLength = parseSomeLength node.attr("textLength")
       lengthAdjustSpacingAndGlyphs = parseLengthAdjust()
+      fontColor = parseHtmlColor node.attrOrDefault("fill", "#000000")
+        # TODO: make a font properties type?
     if textLength < 0:
       failInvalid()
-    echo "should be rendering text ", body
-    const fontData = readFile(
-      "/home/repo/nimpkgs/pixie/examples/data/Roboto-Regular_1.ttf")
-    var font = newFont(parseTtf(fontData))
-    font.size = 20
-    let arrangement = font.typeset(body)
-    fillText(img, arrangement)
+    var typface = readTypeface findSystemTypeface(
+      family = ctx.fontFamily,
+      style = ctx.fontStyle,
+      weight = ctx.fontWeight,
+      size = ctx.fontSize)
+    var font = newFont(typface)
+      # TODO: cache fonts in the context?
+    font.size = ctx.fontSize
+    font.paint.color = fontColor
+
+    let body = node.innerText
+
+    let
+      arrangement = font.typeset(body)
+      bounds = computeBounds arrangement
+    assert(x.len == 1 and y.len == 1, "per-character positioning not implemented")
+
+    var transform = ctx.transform * translate(vec2(x[0], y[0]))
+    # if rotate != 0.0:
+    # TODO
+
+    fillText(img, arrangement, transform)
+    # TODO: ctx.textDirection
 
   of "svg":
     var ctx = decodeCtx(ctxStack[^1], node)
